@@ -546,7 +546,7 @@ commandlist={"info":(cinfo,"\t显示初始信息"),
              "hz":(chz,"\t针对赫兹级采音优化的采音。跳过音高计算，直接生成.adofai谱面文件"),
              "make":(cgenerate,"\t=generate"),
              "generate":(cgenerate,"生成.adofai谱面文件"),
-       		   "exit":(cexit,"\t退出"),
+             "exit":(cexit,"\t退出"),
              "&":(crun,"\t运行外部命令()")}
 
 def inputandprocess():

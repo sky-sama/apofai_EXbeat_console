@@ -1,3 +1,4 @@
+VER="v0.2.6"
 from matplotlib import pyplot as plt
 from matplotlib.widgets import Slider
 #import matplotlib.font_manager
@@ -11,12 +12,16 @@ import os.path as pth
 #import time
 import scipy.signal
 import subprocess
+import re
+import sys
 #SAMPLE_RATE = 44100
 #DURATION = 5
 SIGMA=1e-2
 MU=0.5
 rate=None;all_samples=None;path=None;name=None;val=0;x=None;y0=None;y1=None;bpm=None
 height=[0,32767];threshold=[0,32767];distance=0
+
+#escape_character_list = {"\\":"x5c","a":"x07","b":"x08","t":"x09","n":"x0a","v":"x0b","f":"x0c","r":"x0d",'"':"x22","'":"x27"}
 
 def convfft(a, b):#使用快速傅里叶变换的快速卷积
     N = len(a)
@@ -32,21 +37,19 @@ def convfft(a, b):#使用快速傅里叶变换的快速卷积
 plt.rcParams['font.family']=['Microsoft YaHei']#给plot库导入中文字体
 
 #指令
-#怀疑开头的卡顿都用在def上了（解释性语言）
-#现在想来应该是编译需要导入的库……？
 
 def cinfo(args):
-  print("自动采音器v0.2.5 Console.ver\n\
+  print(f"自动采音器{VER} Console.ver\n\
 作者：@bilibili自己想柠檬\n\
 关注柠檬喵~关注柠檬谢谢喵~\n\
 --------------------------------------------------\n\
 输入help获取基本的使用帮助\n\
 输入list获取支持的所有命令\n\
-要求路径时可以使用相对路径（应该可以）\n\
 --------------------------------------------------")
 
 def chelp(args):
-  print("基本格式：\n\tcommand [arg(s)]\n需要参数的命令，将参数留空可查看该命令的帮助。除部分指令外，空格会分隔不同参数。\n无需参数的命令，输入任何值不影响其执行。可在list命令中查看该命令的描述\n使用list命令获取当前版本支持的所有命令")
+  print("基本格式：\n\tcommand [arg(s)]\n需要参数的命令，将参数留空可查看该命令的帮助。除部分指令外，空格会分隔不同参数。\n无需参数的命令，输入任何值不影响其执行。可在list命令中查看该命令的描述\n使用list命令获取当前版本支持的所有命令\n\
+         (v0.2.6)现已支持引号\"'和转义字符\\。在命令末尾输入\" \\\"以启用转义，如使用\\x20表示空格等。")
 
 def clist(args):
   print("当前可用的所有命令：\n"+"\n".join(pair[0]+"\t"+pair[1][1] for pair in commandlist.items())+"\n")
@@ -65,15 +68,21 @@ open C:\\Users\\\\Desktop\\_hitsound.wav\n\
 openonly F:\\A Dance of Fire and Ice\\背景视频.mp4\n\
 抽取音频转码为.wav文件，但不打开采音预览界面。")
     return
-  tmp=" ".join(args)
+  if args[0][0] == "'" or args[0][0] == "\"":
+    tmp=args[0][1:-1]
+  else:
+    tmp=" ".join(args)
   if not pth.isfile(tmp):
     print("不是一个有效的路径，请重试")
     return
   if tmp[-4:].lower()!=".wav":
     tmp2=".".join(tmp.split(".")[:-1])+".wav"
-    ffmpeg = subprocess.Popen('ffmpeg -i '+f'\"{tmp}\" \"{tmp2}\"',stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    out=ffmpeg.communicate("y".encode())
-    print(f"{out[0]}\nffmpeg输出，看不懂没关系，反正我也不懂（总之没看到error就行\n{out[1]}")
+    try:
+      print("ffmpeg输出，看不懂没关系，反正我也不懂（总之没看到error就行")
+      subprocess.Popen('ffmpeg -i '+f'\"{tmp}\" \"{tmp2}\"').wait()
+    except:
+      print("不是一个可识别的音频格式。请确保路径指向音频文件或包含音频的视频文件")
+      return
     if not pth.isfile(tmp2):
       print("不是一个可识别的音频格式。请确保路径指向音频文件或包含音频的视频文件")
       return
@@ -83,12 +92,14 @@ openonly F:\\A Dance of Fire and Ice\\背景视频.mp4\n\
   try:
     rate, all_samples = wav.read(path)
   except:
-    print("文件读取失败：不是可用的文件格式或其他意外。请联系作者排查故障。")
+    print("文件读取失败：不是可用的文件格式或其他意外。")
     return
   print("采样率",rate,"采样总数",len(all_samples),"数据类型（无用）",all_samples.dtype)
   name=path.split("\\")[-1:][0]
   x = np.linspace(0, len(all_samples)/rate, len(all_samples), endpoint=False)
-  y0 = np.array(all_samples)[:,0]
+  y0 = np.array(all_samples)
+  if y0.ndim == 2 :
+    y0 = (y0[:,0]+y0[:,1])/2
   y1 = np.int32(y0)**2
   y1 = np.int16((y1/y1.max())*32767)
   if show:
@@ -443,10 +454,83 @@ def make(peak,exdescription):
     print(f"谱面文件已保存至{path}_{exdescription}.adofai")
 
 def cexit(args):
-  exit()
+  print("")
+  sys.exit()
+
+def crun(args):
+  if len(args)==0 or args[0].lower=="/?":
+    print("命令格式：\n\
+    & args\n\
+运行外部程序或指令。\n\
+第一个参数指定接受参数的程序或指令，其余的参数作为参数输入程序或指令。\n\
+可以运行path路径内包含的程序或指令。\n\
+示例：\n\
+& help\n\
+非常离谱的是，cmd的部分指令（如echo，cd，tree）是封装在其内部的指令，这些指令不能直接调用\n\
+而另一部分（如help（离谱），xcopy，cmd）是放在System32下的程序，这些可以直接调用。\n\
+所以如果你闲着没事看了一下help，里面很多指令都是不可用的。\n\
+& ffmpeg -i ...\n\
+该命令也可以运行同目录下的其他程序，比如ffmpeg（还有自己）。")
+    return
+  try:
+    subprocess.Popen(" ".join(args)).wait()
+  except Exception as err:
+    print(f"{err}")
 
 def celse(args):
-  print("不是可用的命令。输入list获取当前支持的命令列表")
+  if args == ["bad_quotation_marks",]:
+    print("发生错误：错误的引号数量或结构。请检查输入。")
+  else:
+    print("不是可用的命令。输入list获取当前支持的命令列表")
+
+pre_escape_list = {'\\"':'\\x22',"\\'":"\\x27","\\\\":"\\x5c"}
+escape_character_list = {"\\a":"\a","\\b":"\b","\\t":"\t","\\n":"\n","\\v":"\v","\\f":"\f","\\r":"\r"}
+
+def precode(matchitem):
+  return pre_escape_list.get(matchitem.group(),"\?")
+#re.sub("\\\\[\"\'\\\\]",precode,{#})
+
+def quode(strin:str,unlimited=True):
+  inquote = False
+  dblquote = True
+  strout = ""
+  for char in strin:
+    if inquote:
+      if (char == "\"" and dblquote)or(char == "'" and(not dblquote)):
+        inquote = False
+      if char == " ":
+        if unlimited:
+          strout += "\\x20"
+        else:
+          strout += "\v"
+      else:
+        strout += char
+    else:
+      if char == "\"":
+        inquote = True
+        dblquote = True
+      elif char == "'":
+        inquote = True
+        dblquote = False
+      strout += char
+  if inquote:
+    return "error bad_quotation_marks"
+  else:
+    return strout
+
+def decode(matchitem):
+  escaped_char = matchitem.group()
+  if escaped_char == "\v":
+    return " "
+  elif escaped_char.startswith("\\x"):
+    # 处理十六进制转义序列
+    return chr(int(escaped_char[2:], 16))
+    # 处理八进制转义序列
+  elif 48 <= ord(escaped_char[1]) and ord(escaped_char[1]) <= 55:
+    return chr(int(escaped_char[1:], 8))
+  else:
+    return escape_character_list.get(escaped_char,escaped_char)
+#re.sub("\\\\[abtnvfr]|\\\\x[0-9a-fA-F]{2}|\\\\[0-7]{1,3}",decode,{#})
 
 commandlist={"info":(cinfo,"\t显示初始信息"),
              "help":(chelp,"\t显示基本帮助"),
@@ -462,12 +546,21 @@ commandlist={"info":(cinfo,"\t显示初始信息"),
              "hz":(chz,"\t针对赫兹级采音优化的采音。跳过音高计算，直接生成.adofai谱面文件"),
              "make":(cgenerate,"\t=generate"),
              "generate":(cgenerate,"生成.adofai谱面文件"),
-       		   "exit":(cexit,"\t退出")}
+       		   "exit":(cexit,"\t退出"),
+             "&":(crun,"\t运行外部命令()")}
+
+def inputandprocess():
+  tmp=input("=> ").strip()
+  if tmp[-2:] == " \\":
+    return [re.sub("\\\\[abtnvfr]|\\\\x[0-9a-fA-F]{2}|\\\\[0-7]{1,3}",decode,arg) for arg in quode(re.sub("\\\\[\"\'\\\\]",precode,tmp[:-2])).split(" ")]
+  else:
+    return [re.sub("\\v",decode,arg) for arg in quode(tmp,False).split(" ")]
+
 #Main:
 cinfo([])
 while True:
-  command=input("=> ").strip().split(" ")
+  command=inputandprocess()
   if command[0]=="":
     continue
   commandlist.get(command[0].lower(),(celse,))[0](command[1:])
-#简洁。开心.jpg
+#乐。开心.jpg
